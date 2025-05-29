@@ -62,23 +62,7 @@ else:
     grimm_ds = read_utils.convert_grimm_to_nc(grimm, grimm_file)
     
 
-if os.path.isfile(merged_file):
-    hysplit_ds = xr.open_dataset(hysplit_file)
-    merged_ds = xr.open_dataset(merged_file)
-    
-    
-else:
-    hysplit_working_dir = '/uufs/chpc.utah.edu/common/home/hallar-group2/hysplit/working'
-    hysplit_array = read_utils.generate_hysplit_array(hysplit_working_dir)
-    hysplit_ds, merged_ds = read_utils.generate_hysplit_ds(grimm_ds, hysplit_array, hysplit_file, merged_file)
 
-
-    
-
-        
-# %% derive key results
-
-plot_utils.plot_trajectories_for_each_time(hysplit_ds)
 
 
 
