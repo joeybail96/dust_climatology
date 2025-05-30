@@ -8,6 +8,10 @@ import read_utils
 import pandas as pd
 
 
+from process_utils import grimm_processor
+
+
+
 # %% user defined inputs
 
 
@@ -61,7 +65,7 @@ else:
     grimm.sort_values(by='Time_MST')
     
     # convert grimm data to netcdf and save
-    grimm_ds = read_utils.convert_grimm_to_nc(grimm, grimm_file)
+    grimm_ds = grimm_processor.convert_grimm_to_nc(grimm, grimm_file)
     
 
 
