@@ -3,7 +3,9 @@ import os
 import xarray as xr
 
 import read_utils
-import plot_utils
+#import plot_utils
+
+import pandas as pd
 
 
 # %% user defined inputs
@@ -14,9 +16,9 @@ import plot_utils
 grimm_dir = '/uufs/chpc.utah.edu/common/home/hallar-group2/data/site/alta'
 
 # define the path to where the grimm.pickle is stored
-grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm.nc"
-hysplit_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/hysplit.nc"
-merged_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/merged.nc"
+grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/grimm.nc"
+#hysplit_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/hysplit.nc"
+#merged_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/merged.nc"
 
 
 # define years & months to analyze
@@ -63,8 +65,15 @@ else:
     
 
 
-
-
+# take rolling average of the counts above 2.5 um
+numeric_columns = grimm.columns[grimm.columns.to_series().apply(lambda x: isinstance(x, (int, float)))]
+columns_above_2_5_and_below_10 = numeric_columns[(numeric_columns > 2.5)]
+grimm['Count_>2.5'] = grimm[columns_above_2_5_and_below_10].sum(axis=1)
+grimm['Time_MST'] = pd.to_datetime(grimm['Time_MST'])
+grimm = grimm.set_index('Time_MST')
+rolling_avg = '0.25H'
+grimm['Count_>2.5'] = grimm['Count_>2.5'].rolling(rolling_avg).mean()
+grimm = grimm.reset_index()
 
 
 
