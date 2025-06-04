@@ -9,6 +9,11 @@ import pandas as pd
 
 
 from process_utils import grimm_processor
+from plot_utils import grimm_plotter
+
+
+grimm_processor = grimm_processor()
+grimm_plotter = grimm_plotter()
 
 
 
@@ -20,7 +25,7 @@ from process_utils import grimm_processor
 grimm_dir = '/uufs/chpc.utah.edu/common/home/hallar-group2/data/site/alta'
 
 # define the path to where the grimm.pickle is stored
-grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/grimm.nc"
+grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/processing/grimm.nc"
 #hysplit_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/hysplit.nc"
 #merged_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/merged.nc"
 
@@ -65,19 +70,47 @@ else:
     grimm.sort_values(by='Time_MST')
     
     # convert grimm data to netcdf and save
-    grimm_ds = grimm_processor.convert_grimm_to_nc(grimm, grimm_file)
+    grimm_ds = grimm_processor.convert_grimm_to_nc(grimm, grimm_file=None)
     
+    # add dust variables (raw and avg aerosol counts > 0.8um diameter)
+    grimm_ds = grimm_processor.add_dust_and_averages(grimm_ds, grimm_file, d_dust=0.8)
+
+
+
+# load observations
+metar_excel_path = "../../observations/asos_2018_2023.xlsx"
+metar_nc_path = "../../observations/asos_2018_2023.nc"
+
+# convert observations to nc file for easier processing
+if os.path.isfile(metar_nc_path):
+    metar_nc = xr.open_dataset(metar_nc_path)
+else:    
+    metar_nc = grimm_processor.convert_metar_to_nc(metar_excel_path, metar_nc_path)
+
+
+
+
+
+
+    
+#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_excel_path=obs_file)
+
+
+
+#stats = grimm_processor.get_spring_dust_stats_by_metar(grimm_ds, obs_file)
+#print(stats)
+
 
 
 # take rolling average of the counts above 2.5 um
-numeric_columns = grimm.columns[grimm.columns.to_series().apply(lambda x: isinstance(x, (int, float)))]
-columns_above_2_5_and_below_10 = numeric_columns[(numeric_columns > 2.5)]
-grimm['Count_>2.5'] = grimm[columns_above_2_5_and_below_10].sum(axis=1)
-grimm['Time_MST'] = pd.to_datetime(grimm['Time_MST'])
-grimm = grimm.set_index('Time_MST')
-rolling_avg = '0.25H'
-grimm['Count_>2.5'] = grimm['Count_>2.5'].rolling(rolling_avg).mean()
-grimm = grimm.reset_index()
+# numeric_columns = grimm.columns[grimm.columns.to_series().apply(lambda x: isinstance(x, (int, float)))]
+# columns_above_2_5_and_below_10 = numeric_columns[(numeric_columns > 2.5)]
+# grimm['Count_>2.5'] = grimm[columns_above_2_5_and_below_10].sum(axis=1)
+# grimm['Time_MST'] = pd.to_datetime(grimm['Time_MST'])
+# grimm = grimm.set_index('Time_MST')
+# rolling_avg = '0.25H'
+# grimm['Count_>2.5'] = grimm['Count_>2.5'].rolling(rolling_avg).mean()
+# grimm = grimm.reset_index()
 
 
 
