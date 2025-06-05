@@ -11,7 +11,7 @@ class grimm_plotter:
     
 
 
-    def plot_spring_dust_by_year(self, grimm_ds, metar_nc, meso_path):
+    def plot_spring_dust_by_year(self, grimm_ds, metar_nc, meso_path=False, wind_plot=False):
     
         # --- Grimm data processing ---
         dust_series = grimm_ds['dust'].to_series()
@@ -32,15 +32,16 @@ class grimm_plotter:
         metar_du_times = pd.to_datetime(metar_nc['du_event_time'].values)
         metar_du_times = metar_du_times[metar_du_times.month.isin([3, 4, 5])]
     
-        # --- Wind data ---
-        wind_df = pd.read_csv(meso_path, skiprows=11)
-        wind_df.columns = ['Station_ID', 'Date_Time', 'wind_speed_set_1', 'wind_direction_set_1']
-        wind_df = wind_df.dropna(subset=['wind_speed_set_1', 'wind_direction_set_1'])
-        wind_df['Date_Time'] = pd.to_datetime(wind_df['Date_Time'], errors='coerce')
-        wind_df['Date_Time'] = wind_df['Date_Time'].dt.tz_localize(None)  # <--- Fix here
-        wind_df = wind_df.dropna(subset=['Date_Time'])
-        wind_df['year'] = wind_df['Date_Time'].dt.year
-        wind_df['month'] = wind_df['Date_Time'].dt.month
+        if meso_path:
+            # --- Wind data ---
+            wind_df = pd.read_csv(meso_path, skiprows=11)
+            wind_df.columns = ['Station_ID', 'Date_Time', 'wind_speed_set_1', 'wind_direction_set_1']
+            wind_df = wind_df.dropna(subset=['wind_speed_set_1', 'wind_direction_set_1'])
+            wind_df['Date_Time'] = pd.to_datetime(wind_df['Date_Time'], errors='coerce')
+            wind_df['Date_Time'] = wind_df['Date_Time'].dt.tz_localize(None)  # <--- Fix here
+            wind_df = wind_df.dropna(subset=['Date_Time'])
+            wind_df['year'] = wind_df['Date_Time'].dt.year
+            wind_df['month'] = wind_df['Date_Time'].dt.month
     
         plot_order = [
             ('raw_dust', {'color': 'lightgray', 'label': 'Raw Dust', 'marker': '.', 'linestyle': 'None', 'alpha': 0.3, 'zorder': 1, 'markersize': 3}),
@@ -96,45 +97,47 @@ class grimm_plotter:
             ax_dust.set_xlim(0, 31)
             ax_dust.legend()
             ax_dust.set_title(f'Dust and Wind — {year} {month}')
+            
+            if wind_plot:
+                # --- Wind vector subplot ---
+                sub_wind_df = wind_df[(wind_df['year'] == year) & (wind_df['month'] == month)].copy()
+                if not sub_wind_df.empty:
+                    sub_wind_df = sub_wind_df.set_index('Date_Time')
+                    resampled_wind = sub_wind_df[['wind_speed_set_1', 'wind_direction_set_1']].resample('3H').mean().dropna()
+                    #resampled_wind = sub_wind_df[['wind_speed_set_1', 'wind_direction_set_1']].dropna()
+        
+                    theta = np.deg2rad(resampled_wind['wind_direction_set_1'])
+                    u = 0.5 * resampled_wind['wind_speed_set_1'] * np.sin(theta)
+                    v = 0.5 * resampled_wind['wind_speed_set_1'] * np.cos(theta)
+        
+                    elapsed_wind = (resampled_wind.index - start_of_month).total_seconds() / 86400.0
+                    
+                    wind_dir = resampled_wind['wind_direction_set_1'].values
+                    dir_diff = np.abs(np.diff(wind_dir))
+                    dir_diff = np.minimum(dir_diff, 360 - dir_diff)  # Handle wraparound at 360°
+                    
+                    # Get times where direction change exceeds 45°
+                    change_mask = dir_diff > 90
+                    change_times = resampled_wind.index[1:][change_mask]
+                    change_elapsed = (change_times - start_of_month).total_seconds() / 86400.0
+                    
+                    # Plot change points as vertical lines
+                    for t in change_elapsed:
+                        ax_wind.axvline(t, color='purple', linestyle='--', alpha=0.6, linewidth=1.0, zorder=3)
     
-            # --- Wind vector subplot ---
-            sub_wind_df = wind_df[(wind_df['year'] == year) & (wind_df['month'] == month)].copy()
-            if not sub_wind_df.empty:
-                sub_wind_df = sub_wind_df.set_index('Date_Time')
-                resampled_wind = sub_wind_df[['wind_speed_set_1', 'wind_direction_set_1']].resample('3H').mean().dropna()
-                #resampled_wind = sub_wind_df[['wind_speed_set_1', 'wind_direction_set_1']].dropna()
-    
-                theta = np.deg2rad(resampled_wind['wind_direction_set_1'])
-                u = 0.5 * resampled_wind['wind_speed_set_1'] * np.sin(theta)
-                v = 0.5 * resampled_wind['wind_speed_set_1'] * np.cos(theta)
-    
-                elapsed_wind = (resampled_wind.index - start_of_month).total_seconds() / 86400.0
+        
+                    # Use four distinct colors for 4 direction quadrants
+                    colors_list = ['red', 'blue', 'orange', 'green']
+                    bin_idx = (resampled_wind['wind_direction_set_1'] // 90).astype(int) % 4
+                    colors = [colors_list[i] for i in bin_idx]
+        
+                    ax_wind.quiver(elapsed_wind, [0]*len(u), u, v,
+                                   angles='uv', scale=1, scale_units='xy', width=0.003, color=colors)
+                    ax_wind.set_ylabel('Wind Vector')
+                    ax_wind.set_ylim(-1, 1)
+        
+                ax_wind.set_xlabel('Days since start of month')
                 
-                wind_dir = resampled_wind['wind_direction_set_1'].values
-                dir_diff = np.abs(np.diff(wind_dir))
-                dir_diff = np.minimum(dir_diff, 360 - dir_diff)  # Handle wraparound at 360°
-                
-                # Get times where direction change exceeds 45°
-                change_mask = dir_diff > 90
-                change_times = resampled_wind.index[1:][change_mask]
-                change_elapsed = (change_times - start_of_month).total_seconds() / 86400.0
-                
-                # Plot change points as vertical lines
-                for t in change_elapsed:
-                    ax_wind.axvline(t, color='purple', linestyle='--', alpha=0.6, linewidth=1.0, zorder=3)
-
-    
-                # Use four distinct colors for 4 direction quadrants
-                colors_list = ['red', 'blue', 'orange', 'green']
-                bin_idx = (resampled_wind['wind_direction_set_1'] // 90).astype(int) % 4
-                colors = [colors_list[i] for i in bin_idx]
-    
-                ax_wind.quiver(elapsed_wind, [0]*len(u), u, v,
-                               angles='uv', scale=1, scale_units='xy', width=0.003, color=colors)
-                ax_wind.set_ylabel('Wind Vector')
-                ax_wind.set_ylim(-1, 1)
-    
-            ax_wind.set_xlabel('Days since start of month')
             plt.tight_layout()
             plt.show()
             
