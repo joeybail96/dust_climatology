@@ -75,7 +75,7 @@ def _format_grimm(df, eff):
     utc = pd.to_datetime(df.iloc[:,0],format='mixed')     
     
     # translate into local time (MST)
-    mst = utc.dt.tz_localize('UTC').dt.tz_convert('MST')
+    #mst = utc.dt.tz_localize('UTC').dt.tz_convert('MST')
 
     # drop time columns from df
     df = df.iloc[:, 1:]
@@ -102,10 +102,10 @@ def _format_grimm(df, eff):
         logging.info('Adjusted data using efficiencies')
     
     # combine the time and data dataframes
-    result_df = pd.concat([mst, df], axis=1)
-    result_df.columns = ['Time_MST'] + list(result_df.columns[1:])
+    result_df = pd.concat([utc, df], axis=1)
+    result_df.columns = ['Time_UTC'] + list(result_df.columns[1:])
     
-    result_df = result_df.sort_values(by='Time_MST').reset_index(drop=True)
+    result_df = result_df.sort_values(by='Time_UTC').reset_index(drop=True)
     
     # return formatted grimm data
     return result_df
@@ -223,7 +223,7 @@ def combine(date, data):
     result_df = pd.concat([date, data], axis=1)
         
     # add a column title over the dates
-    result_df.columns = ['Time_MST'] + list(result_df.columns[1:])
+    result_df.columns = ['Time_UTC'] + list(result_df.columns[1:])
     
     logging.info('Time and data combined into single dataframe')
     
@@ -231,44 +231,7 @@ def combine(date, data):
     return result_df  
     
     
-#
-def convert_grimm_to_nc(grimm, grimm_file):
-    # Ensure 'Time_MST' is in datetime format
-    grimm['Time_MST'] = pd.to_datetime(grimm['Time_MST'])
 
-
-    particle_columns = grimm.columns.drop('Time_MST')
-    
-    # Create the Dataset
-    grimm_ds = xr.Dataset(
-        data_vars=dict(
-            size_dist=(["time_mst", "size"], grimm[particle_columns].values),
-        ),
-        coords=dict(
-            time_mst=("time_mst", grimm['Time_MST'].dt.tz_convert(None).astype('datetime64[s]')),
-            size=("size", particle_columns.astype(float)),   # Convert column names to float
-        ),
-        attrs=dict(description="Particle size distribution data from GRIMM.")
-    )
-
-    # particle_size = 0.29
-    # particle_data = grimm_ds.particle_dist.sel(particles=particle_size, method='nearest').values
-    # time_data = grimm_ds.time_mst.values
-    # plt.figure(figsize=(10, 6))
-    # plt.plot(pd.to_datetime(time_data), particle_data, marker='o', linestyle='-', markersize=3, linewidth=0.5)
-    # plt.xlabel('Time (MST)')
-    # plt.ylabel(f'Particle Count for {particle_size} µm')
-    # plt.title(f'Particle Size {particle_size} µm vs Time')
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
-    
-
-    # Save to a NetCDF file
-    grimm_ds.to_netcdf(grimm_file, mode="w")
-    print(f"NetCDF file '{grimm_file}' has been created successfully.")
-
-    return grimm_ds
 
 
 
