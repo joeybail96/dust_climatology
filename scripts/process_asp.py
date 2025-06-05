@@ -28,7 +28,7 @@ grimm_dir = '/uufs/chpc.utah.edu/common/home/hallar-group2/data/site/alta'
 grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/processing/grimm.nc"
 #hysplit_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/hysplit.nc"
 #merged_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/merged.nc"
-
+grimm_5min = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/processing/grimm_5min.nc"
 
 # define years & months to analyze
 years_to_analyze = [2018, 2019, 2020, 2021, 2022, 2023]
@@ -67,13 +67,35 @@ else:
     grimm = read_utils.bin(grimm, grimm_bins)
     
     # sort grimm data by time
-    grimm.sort_values(by='Time_MST')
+    grimm.sort_values(by='Time_UTC')
     
     # convert grimm data to netcdf and save
     grimm_ds = grimm_processor.convert_grimm_to_nc(grimm, grimm_file=None)
     
     # add dust variables (raw and avg aerosol counts > 0.8um diameter)
-    grimm_ds = grimm_processor.add_dust_and_averages(grimm_ds, grimm_file, d_dust=0.8)
+    grimm_ds = grimm_processor.add_dust(grimm_ds, grimm_file, d_dust=0.8)
+    
+
+# read or generate average grimm files
+if os.path.isfile(grimm_5min):
+    grimm_5min = xr.open_dataset(grimm_5min)
+else:  
+    grimm_5min = grimm_processor.save_averages(grimm_ds, grimm_5min, avg_time='5T')
+    
+    
+
+#
+kslc_file = '../../synoptics/kslc/KSLC.2023-06-01.csv'
+asp_file  = '../../synoptics/alta/ATH20.2023-06-01.csv'
+output_nc = '../processing/grimm_clean.nc'
+grimm_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_nc)
+
+
+
+grimm_clean_stats = grimm_processor.clean_stats(grimm_clean)
+
+
+
 
 
 
@@ -88,17 +110,20 @@ else:
     metar_nc = grimm_processor.convert_metar_to_nc(metar_excel_path, metar_nc_path)
 
 
-
+#stats = grimm_processor.get_spring_dust_stats_by_metar(grimm_ds, metar_nc)
+#print(stats)
 
 
 
     
-#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_excel_path=obs_file)
+#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_nc)
+
+meso_asp_file = "../../synoptics/alta/ATH20.2023-06-01.csv"
+#grimm_plotter.plot_wind_alta_timeseries(meso_asp_file)
 
 
+#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_nc, meso_asp_file)
 
-#stats = grimm_processor.get_spring_dust_stats_by_metar(grimm_ds, obs_file)
-#print(stats)
 
 
 
