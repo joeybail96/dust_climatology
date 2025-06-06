@@ -49,8 +49,7 @@ class grimm_processor:
         
         return grimm_avg
         
-    
-    
+      
     def convert_metar_to_nc(self, metar_excel_path, matar_nc_path):
         
         metar_du_times = []
@@ -75,6 +74,7 @@ class grimm_processor:
         ds.to_netcdf(matar_nc_path)
         
         return ds
+    
     
     def add_dust(self, grimm_ds, grimm_file, d_dust=0.8):
     
@@ -210,8 +210,7 @@ class grimm_processor:
         stats_ds = xr.Dataset(data_vars)
         return stats_ds
     
-   
-    
+       
     def get_spring_dust_stats_by_metar(self, grimm_ds, matar_nc):
 
         # Extract DU event times from NetCDF Dataset
