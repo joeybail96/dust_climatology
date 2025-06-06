@@ -210,3 +210,52 @@ class grimm_plotter:
             plt.show()       
 
 
+    def plot_dust_thresholds(self, grimm_ds, threshold):
+
+        # Convert xarray time coordinate to pandas DatetimeIndex for easy grouping
+        time_index = pd.to_datetime(grimm_ds['time_utc'].values)
+        
+        # Extract year and month for grouping
+        years = time_index.year
+        months = time_index.month
+        
+        # Create a DataFrame to facilitate grouping and plotting
+        df = pd.DataFrame({
+            'dust': grimm_ds['dust'].values,
+            'time': time_index,
+            'year': years,
+            'month': months
+        })
+        
+        # Group by year and month
+        grouped = df.groupby(['year', 'month'])
+        
+        for (year, month), group in grouped:
+            if month not in [3, 4, 5]:
+                continue  # Skip months other than March, April, May
+        
+            fig, ax = plt.subplots(figsize=(12, 6))
+        
+            # Below or equal threshold — black markers
+            below_thresh = group['dust'] <= threshold
+            ax.plot(group.loc[below_thresh, 'time'], group.loc[below_thresh, 'dust'],
+                    'k.', markersize=4, label=f'<= {threshold}')
+        
+            # Above threshold — red markers
+            above_thresh = group['dust'] > threshold
+            ax.plot(group.loc[above_thresh, 'time'], group.loc[above_thresh, 'dust'],
+                    'r.', markersize=4, label=f'> {threshold}')
+        
+            ax.set_title(f'Dust Concentration for {year}-{month:02d}')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Dust Concentration')
+        
+            ax.set_yscale('log')
+            ax.set_ylim(1, 500)
+            # For time x-axis, set limits to start and end of month
+            ax.set_xlim(group['time'].min(), group['time'].max())
+        
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            plt.show()
