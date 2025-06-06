@@ -88,14 +88,16 @@ else:
 kslc_file = '../../synoptics/kslc/KSLC.2023-06-01.csv'
 asp_file  = '../../synoptics/alta/ATH20.2023-06-01.csv'
 output_nc = '../processing/grimm_clean.nc'
-grimm_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_nc)
-
+if os.path.isfile(output_nc):
+    grimm_clean = xr.open_dataset(output_nc)
+else:
+    grimm_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_nc)
 
 
 grimm_clean_stats = grimm_processor.clean_stats(grimm_clean)
 
 
-
+grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
 
 
 
