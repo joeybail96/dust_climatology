@@ -259,3 +259,51 @@ class grimm_plotter:
             ax.legend()
             fig.tight_layout()
             plt.show()
+            
+            
+    def plot_dust_days_from_events(self, grimm_ds, grimm_events, threshold):
+
+        # Ensure datetime format
+        full_time = pd.to_datetime(grimm_ds['time_utc'].values)
+        full_dust = grimm_ds['dust'].values
+    
+        # Build full DataFrame from grimm_ds
+        df = pd.DataFrame({
+            'time': full_time,
+            'dust': full_dust
+        })
+    
+        # Extract unique dates from grimm_events
+        grimm_events['time'] = pd.to_datetime(grimm_events['time'])  # just in case
+        unique_days = grimm_events['time'].dt.date.unique()
+    
+        for day in sorted(unique_days):
+            # Mask to all data from the same day in df
+            mask = df['time'].dt.date == day
+            day_data = df.loc[mask]
+    
+            if day_data.empty:
+                continue  # Skip if no data found (unlikely)
+    
+            fig, ax = plt.subplots(figsize=(12, 6))
+    
+            # Below or equal threshold — black
+            below_thresh = day_data['dust'] <= threshold
+            ax.plot(day_data.loc[below_thresh, 'time'], day_data.loc[below_thresh, 'dust'],
+                    'k.', markersize=4, label=f'<= {threshold}')
+    
+            # Above threshold — red
+            above_thresh = day_data['dust'] > threshold
+            ax.plot(day_data.loc[above_thresh, 'time'], day_data.loc[above_thresh, 'dust'],
+                    'r.', markersize=4, label=f'> {threshold}')
+    
+            ax.set_title(f'Dust Concentration on {day}')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Dust Concentration')
+            ax.set_yscale('log')
+            ax.set_ylim(1, 500)
+            ax.set_xlim(day_data['time'].min(), day_data['time'].max())
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            plt.show()

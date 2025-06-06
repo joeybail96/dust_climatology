@@ -106,10 +106,10 @@ grimm_clean_stats = grimm_processor.clean_stats(grimm_clean)
 grimm_events = grimm_processor.identify_events(grimm_ds, threshold = 30)
 
 # plot dust events
-grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
+#grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
 
-
-
+# plot dust event days
+grimm_plotter.plot_dust_days_from_events(grimm_ds, grimm_events, threshold = 30)
 
 
 

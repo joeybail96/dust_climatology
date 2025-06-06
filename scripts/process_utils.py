@@ -43,7 +43,7 @@ class grimm_processor:
     
     
     def save_averages(self, grimm_ds, grimm_file, avg_time):     
-        grimm_avg = grimm_ds.resample(time_utc=avg_time).mean()
+        grimm_avg = grimm_ds.resample(time_utc=avg_time).mean(skipna=True)
         grimm_avg.to_netcdf(grimm_file, mode='w')
         print(f"{avg_time} averaged NetCDF file '{grimm_file}' has been created successfully.")
         
@@ -213,7 +213,28 @@ class grimm_processor:
    
     def identify_events(self, grimm_ds, threshold):
         
-        print('placeholder')
+        # Convert xarray time coordinate to pandas DatetimeIndex
+        time_index = pd.to_datetime(grimm_ds['time_utc'].values)
+        
+        # Extract year and month
+        years = time_index.year
+        months = time_index.month
+        
+        # Create a DataFrame for easy filtering
+        df = pd.DataFrame({
+            'dust': grimm_ds['dust'].values,
+            'time': time_index,
+            'year': years,
+            'month': months
+        })
+        
+        # Filter for March, April, May
+        spring_df = df[df['month'].isin([3, 4, 5])]
+        
+        # Filter for values above threshold
+        above_thresh_df = spring_df[spring_df['dust'] > threshold]
+        
+        return above_thresh_df[['time', 'dust']]
 
 
 
