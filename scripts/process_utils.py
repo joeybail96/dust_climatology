@@ -169,6 +169,12 @@ class grimm_processor:
             'wind_speed_set_1_asp': 'asp_wind_speed'
         }, inplace=True)
         
+        df_common.rename(columns={'wind_speed_set_1_kslc': 'kslc_wind_speed'}, inplace=True)
+        df_common.rename(columns={'visibility_set_1': 'kslc_visibility'}, inplace=True)
+        df_common.rename(columns={'wind_speed_set_1_asp': 'asp_wind_seed'}, inplace=True)
+    
+
+        
         # 5. Convert to xarray Dataset
         ds = df_common.to_xarray()
         
@@ -184,7 +190,25 @@ class grimm_processor:
     
         return ds
  
-   
+
+    def clean_stats(self, ds):
+        
+        stats_funcs = {
+            'mean': lambda x: x.mean(dim='time_utc', skipna=True),
+            'median': lambda x: x.median(dim='time_utc', skipna=True),
+            'std': lambda x: x.std(dim='time_utc', skipna=True),
+            'min': lambda x: x.min(dim='time_utc', skipna=True),
+            'max': lambda x: x.max(dim='time_utc', skipna=True),
+            'count': lambda x: x.count(dim='time_utc')
+        }
+        
+        data_vars = {}
+        for var in ds.data_vars:
+            for stat_name, func in stats_funcs.items():
+                data_vars[f"{var}_{stat_name}"] = func(ds[var])
+        
+        stats_ds = xr.Dataset(data_vars)
+        return stats_ds
     
    
     
