@@ -93,51 +93,34 @@ if os.path.isfile(output_nc):
 else:
     grimm_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_nc)
 
-
+# calculate stats on the following:
+    # kslc windspeeds & visibility
+    # asp windspeeds
+    # asp dust number concentrations
 grimm_clean_stats = grimm_processor.clean_stats(grimm_clean)
 
 
+# retrieve list of times when grimm exceeded dust event threshold
+    # defining threshold by 2 orders magnitude greater than average clean dust # conc
+    # https://acp.copernicus.org/articles/22/9161/2022/
+grimm_events = grimm_processor.identify_events(grimm_ds, threshold = 30)
+
+# plot dust events
 grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
 
 
 
-# load observations
-metar_excel_path = "../../observations/asos_2018_2023.xlsx"
-metar_nc_path = "../../observations/asos_2018_2023.nc"
-
-# convert observations to nc file for easier processing
-if os.path.isfile(metar_nc_path):
-    metar_nc = xr.open_dataset(metar_nc_path)
-else:    
-    metar_nc = grimm_processor.convert_metar_to_nc(metar_excel_path, metar_nc_path)
-
-
-#stats = grimm_processor.get_spring_dust_stats_by_metar(grimm_ds, metar_nc)
-#print(stats)
 
 
 
-    
-#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_nc)
+
+
 
 meso_asp_file = "../../synoptics/alta/ATH20.2023-06-01.csv"
 #grimm_plotter.plot_wind_alta_timeseries(meso_asp_file)
 
 
-#grimm_plotter.plot_spring_dust_by_year(grimm_ds, metar_nc, meso_asp_file)
 
-
-
-
-# take rolling average of the counts above 2.5 um
-# numeric_columns = grimm.columns[grimm.columns.to_series().apply(lambda x: isinstance(x, (int, float)))]
-# columns_above_2_5_and_below_10 = numeric_columns[(numeric_columns > 2.5)]
-# grimm['Count_>2.5'] = grimm[columns_above_2_5_and_below_10].sum(axis=1)
-# grimm['Time_MST'] = pd.to_datetime(grimm['Time_MST'])
-# grimm = grimm.set_index('Time_MST')
-# rolling_avg = '0.25H'
-# grimm['Count_>2.5'] = grimm['Count_>2.5'].rolling(rolling_avg).mean()
-# grimm = grimm.reset_index()
 
 
 
