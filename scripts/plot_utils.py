@@ -263,7 +263,49 @@ class grimm_plotter:
             fig.tight_layout()
             plt.show()
             
-            
+
+
+    def add_threshold_colored_line(self, ax, times, values, clean_avg, threshold, linewidth=1.5):
+        times = mdates.date2num(times)
+        segments = []
+        colors = []
+    
+        for i in range(len(times) - 1):
+            t0, t1 = times[i], times[i + 1]
+            d0, d1 = values[i], values[i + 1]
+    
+            # Check crossing clean_avg
+            if (d0 < clean_avg and d1 >= clean_avg) or (d0 >= clean_avg and d1 < clean_avg):
+                frac = (clean_avg - d0) / (d1 - d0)
+                tc = t0 + frac * (t1 - t0)
+                segments.append([[t0, d0], [tc, clean_avg]])
+                segments.append([[tc, clean_avg], [t1, d1]])
+                colors += ['blue' if d0 < clean_avg else 'black',
+                           'black' if d1 <= threshold else 'red']
+            # Check crossing threshold
+            elif (d0 <= threshold and d1 > threshold) or (d0 > threshold and d1 <= threshold):
+                frac = (threshold - d0) / (d1 - d0)
+                tc = t0 + frac * (t1 - t0)
+                segments.append([[t0, d0], [tc, threshold]])
+                segments.append([[tc, threshold], [t1, d1]])
+                colors += ['black' if d0 <= threshold else 'red',
+                           'red' if d1 > threshold else 'black']
+            else:
+                if d0 < clean_avg and d1 < clean_avg:
+                    color = 'blue'
+                elif d0 > threshold and d1 > threshold:
+                    color = 'red'
+                else:
+                    color = 'black'
+                segments.append([[t0, d0], [t1, d1]])
+                colors.append(color)
+    
+        lc = LineCollection(segments, colors=colors, linewidths=linewidth)
+        ax.add_collection(lc)
+        ax.set_xlim(times.min(), times.max())
+        
+    
+    
     def plot_dust_days_from_events(self, grimm_ds, grimm_events, threshold, clean_avg, wind_csv_path=None):
     
         # Ensure datetime format
@@ -332,8 +374,14 @@ class grimm_plotter:
             between = (day_data['dust'] >= clean_avg) & (day_data['dust'] <= threshold)
             above_threshold = day_data['dust'] > threshold
             
-            ax1.plot(day_data['time'], day_data['dust'], color='gray', linewidth=1.5, label='Dust (all)')
-
+            self.add_threshold_colored_line(
+                ax1,
+                day_data['time'].to_numpy(),
+                day_data['dust'].to_numpy(),
+                clean_avg,
+                threshold
+            )
+            
             
             ax1.plot(day_data.loc[below_clean_avg, 'time'], day_data.loc[below_clean_avg, 'dust'],
                      'b.', markersize=4, label=f'< clean_avg ({clean_avg:.2f})')
