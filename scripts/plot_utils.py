@@ -404,6 +404,20 @@ class grimm_plotter:
             ax1.axhline(clean_avg, color='blue', linestyle='-', linewidth=3, zorder=10, label=f'Clean Avg = {clean_avg:.2f}')
             
             ax1.set_xlim(window_start - pd.Timedelta(hours=1), window_end + pd.Timedelta(hours=1))
+            
+            # Set x-axis major ticks to every hour
+            ax1.xaxis.set_major_locator(mdates.HourLocator())
+            # Format x-axis labels to show hour and minute (e.g., 14:00)
+            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            
+            # Optional: rotate labels so they don't overlap
+            plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha='right')
+            
+            # If you have ax2 sharing x-axis and want the same for it
+            if wind_csv_path and wind_day is not None:
+                ax2.xaxis.set_major_locator(mdates.HourLocator())
+                ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
     
             ax1.set_title(f'Dust Concentration on {day} (±4 hours)')
             ax1.set_ylabel('Dust Concentration')
