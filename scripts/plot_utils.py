@@ -266,6 +266,21 @@ class grimm_plotter:
 
 
     def add_threshold_colored_line(self, ax, times, values, clean_avg, threshold, linewidth=1.5):
+        def classify(val):
+            if val < clean_avg:
+                return 'low'
+            elif val > threshold:
+                return 'high'
+            else:
+                return 'mid'
+    
+        def get_color(class_label):
+            return {
+                'low': '#7fcdbb',   # blue-green
+                'mid': 'black',
+                'high': '#d73027'   # red
+            }[class_label]
+    
         times = mdates.date2num(times)
         segments = []
         colors = []
@@ -274,30 +289,24 @@ class grimm_plotter:
             t0, t1 = times[i], times[i + 1]
             d0, d1 = values[i], values[i + 1]
     
-            # Check crossing clean_avg
-            if (d0 < clean_avg and d1 >= clean_avg) or (d0 >= clean_avg and d1 < clean_avg):
-                frac = (clean_avg - d0) / (d1 - d0)
-                tc = t0 + frac * (t1 - t0)
-                segments.append([[t0, d0], [tc, clean_avg]])
-                segments.append([[tc, clean_avg], [t1, d1]])
-                colors += ['blue' if d0 < clean_avg else 'black',
-                           'black' if d1 <= threshold else 'red']
-            # Check crossing threshold
-            elif (d0 <= threshold and d1 > threshold) or (d0 > threshold and d1 <= threshold):
-                frac = (threshold - d0) / (d1 - d0)
-                tc = t0 + frac * (t1 - t0)
-                segments.append([[t0, d0], [tc, threshold]])
-                segments.append([[tc, threshold], [t1, d1]])
-                colors += ['black' if d0 <= threshold else 'red',
-                           'red' if d1 > threshold else 'black']
-            else:
-                if d0 < clean_avg and d1 < clean_avg:
-                    color = 'blue'
-                elif d0 > threshold and d1 > threshold:
-                    color = 'red'
-                else:
-                    color = 'black'
-                segments.append([[t0, d0], [t1, d1]])
+            points = [(t0, d0), (t1, d1)]
+    
+            # Identify crossings and insert interpolated points
+            breaks = []
+            for level in [clean_avg, threshold]:
+                if (d0 - level) * (d1 - level) < 0:  # crossing occurs
+                    frac = (level - d0) / (d1 - d0)
+                    tc = t0 + frac * (t1 - t0)
+                    breaks.append((tc, level))
+    
+            # Sort all breakpoints and split segment accordingly
+            all_points = [points[0]] + sorted(breaks, key=lambda x: x[0]) + [points[1]]
+    
+            for j in range(len(all_points) - 1):
+                (x0, y0), (x1, y1) = all_points[j], all_points[j + 1]
+                class_label = classify((y0 + y1) / 2)
+                color = get_color(class_label)
+                segments.append([[x0, y0], [x1, y1]])
                 colors.append(color)
     
         lc = LineCollection(segments, colors=colors, linewidths=linewidth)
@@ -392,16 +401,17 @@ class grimm_plotter:
             )
     
             ax1.plot(day_data.loc[below_clean_avg, 'time'], day_data.loc[below_clean_avg, 'dust'],
-                     'b.', markersize=4, label=f'< clean_avg ({clean_avg:.2f})')
-    
+                     '.', color='#7fcdbb', markersize=4, label=f'< clean_avg ({clean_avg:.2f})')
+            
             ax1.plot(day_data.loc[between, 'time'], day_data.loc[between, 'dust'],
-                     'k.', markersize=4, label=f'between clean_avg and threshold')
-    
+                     '.', color='k', markersize=4, label=f'between clean_avg and threshold')
+            
             ax1.plot(day_data.loc[above_threshold, 'time'], day_data.loc[above_threshold, 'dust'],
-                     'r.', markersize=4, label=f'> threshold ({threshold})')
+                     '.', color='#d73027', markersize=4, label=f'> threshold ({threshold})')
+
     
-            ax1.axhline(threshold, color='red', linestyle='-', linewidth=3, zorder=10, label=f'Threshold = {threshold}')
-            ax1.axhline(clean_avg, color='blue', linestyle='-', linewidth=3, zorder=10, label=f'Clean Avg = {clean_avg:.2f}')
+            ax1.axhline(threshold, color='#d73027', linestyle='-', linewidth=1.5, zorder=10, label=f'Threshold = {threshold}')
+            ax1.axhline(clean_avg, color='#7fcdbb', linestyle='-', linewidth=1.5, zorder=10, label=f'Clean Avg = {clean_avg:.2f}')
             
             ax1.set_xlim(window_start - pd.Timedelta(hours=1), window_end + pd.Timedelta(hours=1))
             
@@ -423,38 +433,57 @@ class grimm_plotter:
             ax1.set_ylabel('Dust Concentration')
             ax1.set_yscale('log')
             ax1.set_ylim(0.01, 500)
-            ax1.grid(True)
+            ax1.grid(False)                      # Disable gridlines
+            ax1.tick_params(labelbottom=False)  # Hide x-axis tick labels
+            ax1.set_xlabel('')                  # Remove x-axis label
     
             # Wind vector plot
             if wind_csv_path and wind_day is not None:
-                # Normalize wind speeds for color mapping
-                norm = mcolors.Normalize(vmin=speeds.min(), vmax=speeds.max())
-                colors = cm.coolwarm(norm(speeds))
-    
-                # Plot quiver
-                q = ax2.quiver(times, [0] * len(times), u_unit, v_unit,
+
+                bins = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+
+                # Blue to dark blue (colorblind-friendly, distinct)
+                blue_to_darkblue = mcolors.LinearSegmentedColormap.from_list(
+                    'blue_to_darkblue', ['#7fcdbb', '#0868ac'], N=5)  # light teal to dark blue
+                
+                # Orange to red (distinct warm colors)
+                orange_to_red = mcolors.LinearSegmentedColormap.from_list(
+                    'orange_to_red', ['#fdae61', '#d73027'], N=5)  # light orange to dark red
+                
+                blue_colors = blue_to_darkblue(np.linspace(0, 1, 5))
+                orange_colors = orange_to_red(np.linspace(0, 1, 5))
+                
+                all_colors = np.vstack((blue_colors, orange_colors))
+                
+                discrete_cmap = mcolors.ListedColormap(all_colors)
+                norm = mcolors.BoundaryNorm(bins, discrete_cmap.N)
+                
+                # Map speeds to discrete colors
+                colors = discrete_cmap(norm(speeds))
+            
+                
+                # Quiver and scatter plotting using discrete colors:
+                q = ax2.quiver(times, [0]*len(times), u_unit, v_unit,
                                angles='xy', scale_units='xy', scale=30,
                                width=0.003,
                                headwidth=3, headlength=4, headaxislength=3,
                                color=colors)
-    
-                # Plot markers with same color as quiver arrows
-                norm = mcolors.Normalize(vmin=speeds.min(), vmax=speeds.max())
-                colors = cm.bwr(norm(speeds))
+                
                 ax2.scatter(times, np.zeros_like(u_unit), color=colors, s=40, zorder=6)
-    
+                
+                # Colorbar for discrete colormap
+                sm = plt.cm.ScalarMappable(cmap=discrete_cmap, norm=norm)
+                sm.set_array([])  # Needed for colorbar
+                cbar = fig.colorbar(sm, cax=cax, boundaries=bins, ticks=bins)
+                cbar.set_label('Wind Speed (m/s)')
+
                 ax2.set_ylim(-1.5, 1.5)
-                ax2.set_ylabel('Wind Direction (unit vectors)')
+                ax2.set_ylabel('Wind Unit Vector')
                 ax2.set_xlabel('Time')
                 ax2.set_yticks([])
                 ax2.grid(True)
-                ax2.set_aspect('equal', adjustable='datalim')
-    
-                # Add colorbar for wind speed
-                sm = cm.ScalarMappable(cmap=cm.bwr, norm=norm)
-                sm.set_array([])
-                cbar = fig.colorbar(sm, cax=cax)
-                cbar.set_label('Wind Speed')
+                
+                ax2.set_aspect('equal', adjustable='datalim')  # <- This enforces 1:1 aspect ratio
     
             else:
                 ax1.set_xlabel('Time')
