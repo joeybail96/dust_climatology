@@ -211,15 +211,15 @@ class grimm_processor:
         return stats_ds
     
    
-    def identify_events(self, grimm_ds, threshold):
-        
+    def identify_events(self, grimm_ds, threshold, clean_thresh):
+
         # Convert xarray time coordinate to pandas DatetimeIndex
         time_index = pd.to_datetime(grimm_ds['time_utc'].values)
-        
+    
         # Extract year and month
         years = time_index.year
         months = time_index.month
-        
+    
         # Create a DataFrame for easy filtering
         df = pd.DataFrame({
             'dust': grimm_ds['dust'].values,
@@ -227,14 +227,50 @@ class grimm_processor:
             'year': years,
             'month': months
         })
-        
+    
         # Filter for March, April, May
-        spring_df = df[df['month'].isin([3, 4, 5])]
-        
-        # Filter for values above threshold
-        above_thresh_df = spring_df[spring_df['dust'] > threshold]
-        
-        return above_thresh_df[['time', 'dust']]
+        spring_df = df[df['month'].isin([3, 4, 5])].reset_index(drop=True)
+    
+        # Create a boolean mask for dust > threshold
+        above = spring_df['dust'] > threshold
+    
+        # Identify consecutive periods above the threshold using group id
+        event_id = (above != above.shift()).cumsum()
+        spring_df['event_id'] = event_id
+        spring_df['above'] = above
+    
+        # Group by event_id where the value is above threshold
+        event_groups = spring_df[spring_df['above']].groupby('event_id')
+    
+        # Prepare a list to store event boundaries
+        event_records = []
+    
+        for eid, group in event_groups:
+            start_idx = group.index[0]
+            end_idx = group.index[-1]
+    
+            # Find the last index before the event where dust <= threshold
+            pre_event = spring_df.loc[:start_idx - 1]
+            start_time = pre_event[pre_event['dust'] <= clean_thresh]['time'].iloc[-1] if not pre_event[pre_event['dust'] <= clean_thresh].empty else group['time'].iloc[0]
+    
+            # Find the first index after the event where dust <= threshold
+            post_event = spring_df.loc[end_idx + 1:]
+            end_time = post_event[post_event['dust'] <= clean_thresh]['time'].iloc[0] if not post_event[post_event['dust'] <= clean_thresh].empty else group['time'].iloc[-1]
+    
+            peak_idx = group['dust'].idxmax()
+            event_start = start_time
+            event_end = end_time
+            event_duration = (event_end - event_start).total_seconds() / 60  # duration in minutes
+
+            event_records.append({
+                'event_start': event_start,
+                'event_peak_time': spring_df.loc[peak_idx, 'time'],
+                'event_end': event_end,
+                'duration_minutes': event_duration,
+                'peak_dust': spring_df.loc[peak_idx, 'dust']
+            })
+    
+        return pd.DataFrame(event_records)
 
 
 

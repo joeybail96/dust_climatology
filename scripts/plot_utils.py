@@ -6,6 +6,7 @@ import numpy as np
 from matplotlib.gridspec import GridSpec
 from matplotlib.collections import LineCollection
 import matplotlib.dates as mdates
+import os
 
 
 class grimm_plotter:
@@ -315,7 +316,7 @@ class grimm_plotter:
         
     
     
-    def plot_dust_days_from_events(self, grimm_ds, grimm_events, threshold, clean_avg, wind_csv_path=None):
+    def plot_dust_days_from_events(self, grimm_ds, grimm_events, avg_period, threshold, clean_avg, wind_csv_path=None, fig_dir=None):
     
         # Ensure datetime format
         full_time = pd.to_datetime(grimm_ds['time_utc'].values)
@@ -332,8 +333,8 @@ class grimm_plotter:
             df['time'] = df['time'].dt.tz_localize('UTC')
     
         # Extract unique dates from grimm_events
-        grimm_events['time'] = pd.to_datetime(grimm_events['time'])  # just in case
-        unique_days = grimm_events['time'].dt.date.unique()
+        grimm_events['event_peak_time'] = pd.to_datetime(grimm_events['event_peak_time'])  # just in case
+        unique_days = grimm_events['event_peak_time'].dt.date.unique()
     
         # Load wind data if provided
         if wind_csv_path:
@@ -387,6 +388,21 @@ class grimm_plotter:
             else:
                 fig, ax1 = plt.subplots(figsize=(12, 6))
     
+            # Plot vertical lines for event start and end
+            if 'event_start' in grimm_events.columns and 'event_end' in grimm_events.columns:
+                grimm_events['event_start'] = pd.to_datetime(grimm_events['event_start'])
+                grimm_events['event_end'] = pd.to_datetime(grimm_events['event_end'])
+
+                day_events = grimm_events[
+                    (grimm_events['event_start'].dt.date <= day) &
+                    (grimm_events['event_end'].dt.date >= day)
+                ]
+
+                for _, row in day_events.iterrows():
+                    ax1.axvline(row['event_start'], color='#d73027', linestyle='--', linewidth=1.5, label='Event Start')
+                    ax1.axvline(row['event_end'], color='#d73027', linestyle='--', linewidth=1.5, label='Event End')
+
+    
             # Dust plot coloring masks
             below_clean_avg = day_data['dust'] < clean_avg
             between = (day_data['dust'] >= clean_avg) & (day_data['dust'] <= threshold)
@@ -429,7 +445,7 @@ class grimm_plotter:
                 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
     
-            ax1.set_title(f'Dust Concentration on {day} (±4 hours)')
+            ax1.set_title(f'{avg_period} min avg - Dust Concentration on {day} (±4 hours)')
             ax1.set_ylabel('Dust Concentration')
             ax1.set_yscale('log')
             ax1.set_ylim(0.01, 500)
@@ -489,4 +505,10 @@ class grimm_plotter:
                 ax1.set_xlabel('Time')
     
             fig.tight_layout()
-            plt.show()
+            
+            if fig_dir:
+                fig_path = os.path.join(fig_dir, f"{day}_{avg_period}min.png")
+                fig.savefig(fig_path, dpi=300)
+            
+            else:
+                plt.show()

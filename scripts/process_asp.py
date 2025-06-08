@@ -29,6 +29,8 @@ grimm_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/pr
 #hysplit_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/hysplit.nc"
 #merged_file = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/merged.nc"
 grimm_5min = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/processing/grimm_5min.nc"
+grimm_10min = "/uufs/chpc.utah.edu/common/home/hallar-group2/climatology/grimm/processing/grimm_10min.nc"
+
 
 # define years & months to analyze
 years_to_analyze = [2018, 2019, 2020, 2021, 2022, 2023]
@@ -82,16 +84,42 @@ if os.path.isfile(grimm_5min):
 else:  
     grimm_5min = grimm_processor.save_averages(grimm_ds, grimm_5min, avg_time='5T')
     
+# read or generate average grimm files
+if os.path.isfile(grimm_10min):
+    grimm_10min = xr.open_dataset(grimm_10min)
+else:  
+    grimm_10min = grimm_processor.save_averages(grimm_ds, grimm_10min, avg_time='10T')
+    
     
 
 #
 kslc_file = '../../synoptics/kslc/KSLC.2023-06-01.csv'
 asp_file  = '../../synoptics/alta/ATH20.2023-06-01.csv'
-output_nc = '../processing/grimm_clean.nc'
-if os.path.isfile(output_nc):
-    grimm_clean = xr.open_dataset(output_nc)
+
+
+user_input = int(input("Enter interval (5 or 10): "))
+
+if user_input == 5:
+    output_5min_nc = '../processing/grimm_clean_5min.nc'
+    if os.path.isfile(output_5min_nc):
+        grimm_5min_clean = xr.open_dataset(output_5min_nc)
+    else:
+        grimm_5min_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_5min_nc)
+    grimm_clean = grimm_5min_clean
+    grimm_avg = grimm_5min
+    
+elif user_input == 10:
+    output_10min_nc = '../processing/grimm_clean_10min.nc'   
+    if os.path.isfile(output_10min_nc):
+        grimm_10min_clean = xr.open_dataset(output_10min_nc)
+    else:
+        grimm_10min_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_10min, output_10min_nc)
+    grimm_clean = grimm_10min_clean
+    grimm_avg = grimm_10min
+    
 else:
-    grimm_clean = grimm_processor.find_shared_threshold_times(kslc_file, asp_file, grimm_5min, output_nc)
+    raise ValueError("Invalid input. Please enter 5 or 10.")
+
 
 # calculate stats on the following:
     # kslc windspeeds & visibility
@@ -99,17 +127,22 @@ else:
     # asp dust number concentrations
 grimm_clean_stats = grimm_processor.clean_stats(grimm_clean)
 
+clean_mean = grimm_clean_stats['dust_mean'].item()
+clean_std = grimm_clean_stats['dust_std'].item()
+clean_thresh = clean_mean + 1*clean_std
+
+event_thresh = clean_mean * 100
 
 # retrieve list of times when grimm exceeded dust event threshold
     # defining threshold by 2 orders magnitude greater than average clean dust # conc
     # https://acp.copernicus.org/articles/22/9161/2022/
-grimm_events = grimm_processor.identify_events(grimm_ds, threshold = 30)
+grimm_events = grimm_processor.identify_events(grimm_10min, threshold=event_thresh, clean_thresh=clean_thresh)
 
 # plot dust events
 #grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
 
 # plot dust event days
-grimm_plotter.plot_dust_days_from_events(grimm_ds, grimm_events, threshold = 30)
+grimm_plotter.plot_dust_days_from_events(grimm_10min, grimm_events, user_input, threshold = event_thresh, clean_avg=clean_thresh, wind_csv_path=kslc_file, fig_dir="../figures")
 
 
 
