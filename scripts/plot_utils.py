@@ -3,6 +3,9 @@ import pandas as pd
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import numpy as np
+from matplotlib.gridspec import GridSpec
+from matplotlib.collections import LineCollection
+import matplotlib.dates as mdates
 
 
 class grimm_plotter:
@@ -261,8 +264,8 @@ class grimm_plotter:
             plt.show()
             
             
-    def plot_dust_days_from_events(self, grimm_ds, grimm_events, threshold):
-
+    def plot_dust_days_from_events(self, grimm_ds, grimm_events, threshold, clean_avg, wind_csv_path=None):
+    
         # Ensure datetime format
         full_time = pd.to_datetime(grimm_ds['time_utc'].values)
         full_dust = grimm_ds['dust'].values
@@ -277,33 +280,119 @@ class grimm_plotter:
         grimm_events['time'] = pd.to_datetime(grimm_events['time'])  # just in case
         unique_days = grimm_events['time'].dt.date.unique()
     
+        # Load wind data if provided
+        if wind_csv_path:
+            wind_df = pd.read_csv(wind_csv_path, skiprows=10)
+            wind_df.columns = wind_df.columns.str.strip()
+            wind_df['Date_Time'] = pd.to_datetime(wind_df['Date_Time'], errors='coerce')
+            wind_df = wind_df.dropna(subset=['Date_Time', 'wind_speed_set_1', 'wind_direction_set_1'])
+            wind_df['wind_speed_set_1'] = pd.to_numeric(wind_df['wind_speed_set_1'], errors='coerce')
+            wind_df['wind_direction_set_1'] = pd.to_numeric(wind_df['wind_direction_set_1'], errors='coerce')
+            wind_df = wind_df.dropna()
+    
         for day in sorted(unique_days):
-            # Mask to all data from the same day in df
+            # Filter dust data
             mask = df['time'].dt.date == day
             day_data = df.loc[mask]
-    
             if day_data.empty:
-                continue  # Skip if no data found (unlikely)
+                continue
     
-            fig, ax = plt.subplots(figsize=(12, 6))
+            wind_day = None
+            if wind_csv_path:
+                # Filter wind data for this day
+                wind_day = wind_df[wind_df['Date_Time'].dt.date == day]
+                if wind_day.empty:
+                    print(f"No wind data for {day}, skipping wind panel.")
+                    wind_day = None
+                else:
+                    # Resample to 1-hour intervals
+                    wind_day = wind_day.set_index('Date_Time')[['wind_speed_set_1', 'wind_direction_set_1']]
+                    wind_day = wind_day.resample('1H').mean().dropna()
+                    times = wind_day.index
+                    directions = wind_day['wind_direction_set_1']
+                    speeds = wind_day['wind_speed_set_1']
     
-            # Below or equal threshold — black
-            below_thresh = day_data['dust'] <= threshold
-            ax.plot(day_data.loc[below_thresh, 'time'], day_data.loc[below_thresh, 'dust'],
-                    'k.', markersize=4, label=f'<= {threshold}')
+                    # Unit vectors
+                    u_unit = np.sin(np.radians(directions))
+                    v_unit = np.cos(np.radians(directions))
     
-            # Above threshold — red
-            above_thresh = day_data['dust'] > threshold
-            ax.plot(day_data.loc[above_thresh, 'time'], day_data.loc[above_thresh, 'dust'],
-                    'r.', markersize=4, label=f'> {threshold}')
+            # Create subplots
+            if wind_csv_path and wind_day is not None:
+                fig = plt.figure(figsize=(12, 8))
+                gs = GridSpec(2, 2, width_ratios=[20, 1], height_ratios=[3, 1], hspace=0.05, wspace=0.05)
+                ax1 = fig.add_subplot(gs[0, 0])
+                ax2 = fig.add_subplot(gs[1, 0], sharex=ax1)
+                cax = fig.add_subplot(gs[:, 1])  # colorbar axis (occupies both rows)
+            else:
+                fig, ax1 = plt.subplots(figsize=(12, 6))
+
     
-            ax.set_title(f'Dust Concentration on {day}')
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Dust Concentration')
-            ax.set_yscale('log')
-            ax.set_ylim(1, 500)
-            ax.set_xlim(day_data['time'].min(), day_data['time'].max())
-            ax.grid(True)
-            ax.legend()
+            # Dust plot
+            below_clean_avg = day_data['dust'] < clean_avg
+            between = (day_data['dust'] >= clean_avg) & (day_data['dust'] <= threshold)
+            above_threshold = day_data['dust'] > threshold
+            
+            ax1.plot(day_data['time'], day_data['dust'], color='gray', linewidth=1.5, label='Dust (all)')
+
+            
+            ax1.plot(day_data.loc[below_clean_avg, 'time'], day_data.loc[below_clean_avg, 'dust'],
+                     'b.', markersize=4, label=f'< clean_avg ({clean_avg:.2f})')
+            
+            ax1.plot(day_data.loc[between, 'time'], day_data.loc[between, 'dust'],
+                     'k.', markersize=4, label=f'between clean_avg and threshold')
+            
+            ax1.plot(day_data.loc[above_threshold, 'time'], day_data.loc[above_threshold, 'dust'],
+                     'r.', markersize=4, label=f'> threshold ({threshold})')
+            
+            # Optionally, keep the threshold lines if you still want to show them
+            ax1.axhline(threshold, color='red', linestyle='-', linewidth=3, zorder=10, label=f'Threshold = {threshold}')
+            ax1.axhline(clean_avg, color='blue', linestyle='-', linewidth=3, zorder=10, label=f'Clean Avg = {clean_avg:.2f}')
+            
+            ax1.set_title(f'Dust Concentration on {day}')
+            ax1.set_ylabel('Dust Concentration')
+            ax1.set_yscale('log')
+            ax1.set_ylim(0.01, 500)
+            ax1.grid(True)
+    
+            # Wind vector plot
+            if wind_csv_path and wind_day is not None:
+                # Normalize wind speeds for color mapping
+                norm = mcolors.Normalize(vmin=speeds.min(), vmax=speeds.max())
+                colors = cm.coolwarm(norm(speeds))
+    
+                # Plot quiver
+                q = ax2.quiver(times, [0] * len(times), u_unit, v_unit,
+                               angles='xy', scale_units='xy', scale=30,
+                               width=0.003,
+                               headwidth=3, headlength=4, headaxislength=3,
+                               color=colors)
+    
+                #ax2.plot(times, np.zeros_like(u_unit), 'ko', markersize=7, zorder=6)
+                
+                # Normalize speeds for consistent color mapping
+                norm = mcolors.Normalize(vmin=speeds.min(), vmax=speeds.max())
+                colors = cm.bwr(norm(speeds))
+                
+                # Plot markers with same color as quiver arrows
+                ax2.scatter(times, np.zeros_like(u_unit), color=colors, s=40, zorder=6)
+                
+                ax2.set_ylim(-1.5, 1.5)
+                ax2.set_ylabel('Wind Direction (unit vectors)')
+                ax2.set_xlabel('Time')
+                ax2.set_yticks([])
+                ax2.grid(True)
+                ax2.set_aspect('equal', adjustable='datalim')
+    
+                # Add colorbar for wind speed
+                sm = cm.ScalarMappable(cmap=cm.bwr, norm=norm)
+                sm.set_array([])
+                #cbar = fig.colorbar(sm, ax=ax2, orientation='vertical', pad=0.02)
+                #cbar.set_label('Wind Speed')
+                cbar = fig.colorbar(sm, cax=cax)
+                cbar.set_label('Wind Speed')
+    
+            else:
+                ax1.set_xlabel('Time')
+    
             fig.tight_layout()
             plt.show()
