@@ -317,6 +317,10 @@ class grimm_plotter:
             'time': full_time,
             'dust': full_dust
         })
+        
+        # Localize time to UTC if naive
+        if df['time'].dt.tz is None:
+            df['time'] = df['time'].dt.tz_localize('UTC')
     
         # Extract unique dates from grimm_events
         grimm_events['time'] = pd.to_datetime(grimm_events['time'])  # just in case
@@ -333,18 +337,24 @@ class grimm_plotter:
             wind_df = wind_df.dropna()
     
         for day in sorted(unique_days):
-            # Filter dust data
-            mask = df['time'].dt.date == day
+            # Define extended time window: from 4 hours before day start to 4 hours after day end
+            day_start = pd.Timestamp(day).tz_localize('UTC')  # localize to UTC
+            window_start = day_start - pd.Timedelta(hours=4)
+            window_end = day_start + pd.Timedelta(days=1) + pd.Timedelta(hours=4)
+    
+            # Filter dust data within this window
+            mask = (df['time'] >= window_start) & (df['time'] <= window_end)
             day_data = df.loc[mask]
             if day_data.empty:
                 continue
     
             wind_day = None
             if wind_csv_path:
-                # Filter wind data for this day
-                wind_day = wind_df[wind_df['Date_Time'].dt.date == day]
+                # Filter wind data within the same window
+                wind_mask = (wind_df['Date_Time'] >= window_start) & (wind_df['Date_Time'] <= window_end)
+                wind_day = wind_df.loc[wind_mask]
                 if wind_day.empty:
-                    print(f"No wind data for {day}, skipping wind panel.")
+                    print(f"No wind data for {day} (±4h), skipping wind panel.")
                     wind_day = None
                 else:
                     # Resample to 1-hour intervals
@@ -367,13 +377,12 @@ class grimm_plotter:
                 cax = fig.add_subplot(gs[:, 1])  # colorbar axis (occupies both rows)
             else:
                 fig, ax1 = plt.subplots(figsize=(12, 6))
-
     
-            # Dust plot
+            # Dust plot coloring masks
             below_clean_avg = day_data['dust'] < clean_avg
             between = (day_data['dust'] >= clean_avg) & (day_data['dust'] <= threshold)
             above_threshold = day_data['dust'] > threshold
-            
+    
             self.add_threshold_colored_line(
                 ax1,
                 day_data['time'].to_numpy(),
@@ -381,22 +390,22 @@ class grimm_plotter:
                 clean_avg,
                 threshold
             )
-            
-            
+    
             ax1.plot(day_data.loc[below_clean_avg, 'time'], day_data.loc[below_clean_avg, 'dust'],
                      'b.', markersize=4, label=f'< clean_avg ({clean_avg:.2f})')
-            
+    
             ax1.plot(day_data.loc[between, 'time'], day_data.loc[between, 'dust'],
                      'k.', markersize=4, label=f'between clean_avg and threshold')
-            
+    
             ax1.plot(day_data.loc[above_threshold, 'time'], day_data.loc[above_threshold, 'dust'],
                      'r.', markersize=4, label=f'> threshold ({threshold})')
-            
-            # Optionally, keep the threshold lines if you still want to show them
+    
             ax1.axhline(threshold, color='red', linestyle='-', linewidth=3, zorder=10, label=f'Threshold = {threshold}')
             ax1.axhline(clean_avg, color='blue', linestyle='-', linewidth=3, zorder=10, label=f'Clean Avg = {clean_avg:.2f}')
             
-            ax1.set_title(f'Dust Concentration on {day}')
+            ax1.set_xlim(window_start - pd.Timedelta(hours=1), window_end + pd.Timedelta(hours=1))
+    
+            ax1.set_title(f'Dust Concentration on {day} (±4 hours)')
             ax1.set_ylabel('Dust Concentration')
             ax1.set_yscale('log')
             ax1.set_ylim(0.01, 500)
@@ -415,15 +424,11 @@ class grimm_plotter:
                                headwidth=3, headlength=4, headaxislength=3,
                                color=colors)
     
-                #ax2.plot(times, np.zeros_like(u_unit), 'ko', markersize=7, zorder=6)
-                
-                # Normalize speeds for consistent color mapping
+                # Plot markers with same color as quiver arrows
                 norm = mcolors.Normalize(vmin=speeds.min(), vmax=speeds.max())
                 colors = cm.bwr(norm(speeds))
-                
-                # Plot markers with same color as quiver arrows
                 ax2.scatter(times, np.zeros_like(u_unit), color=colors, s=40, zorder=6)
-                
+    
                 ax2.set_ylim(-1.5, 1.5)
                 ax2.set_ylabel('Wind Direction (unit vectors)')
                 ax2.set_xlabel('Time')
@@ -434,8 +439,6 @@ class grimm_plotter:
                 # Add colorbar for wind speed
                 sm = cm.ScalarMappable(cmap=cm.bwr, norm=norm)
                 sm.set_array([])
-                #cbar = fig.colorbar(sm, ax=ax2, orientation='vertical', pad=0.02)
-                #cbar.set_label('Wind Speed')
                 cbar = fig.colorbar(sm, cax=cax)
                 cbar.set_label('Wind Speed')
     
