@@ -2,6 +2,7 @@ import pandas as pd
 import xarray as xr
 import numpy as np
 import pytz
+from scipy.stats import ks_2samp, ttest_ind
 
 
 class grimm_processor:
@@ -273,7 +274,37 @@ class grimm_processor:
         return pd.DataFrame(event_records)
 
 
+    def merge_adjacent_events(self, events_df):
+        # Ensure sorted and reset index for safe iloc use
+        events_df = events_df.sort_values('event_start').reset_index(drop=True)
+        merged = []
+        current = events_df.iloc[0].copy()
+    
+        for i in range(1, len(events_df)):
+            next_event = events_df.iloc[i]
+    
+            # Merge if current event_end matches next event_start exactly
+            # If you want to allow a small gap or overlap, adjust condition here
+            if current['event_end'] == next_event['event_start']:
+                # Extend current event end time to next event's end time
+                current['event_end'] = next_event['event_end']
+                # Recalculate duration in minutes
+                current['duration_minutes'] = (current['event_end'] - current['event_start']).total_seconds() / 60
+                # Update peak dust and peak time if next event is stronger
+                if next_event['peak_dust'] > current['peak_dust']:
+                    current['peak_dust'] = next_event['peak_dust']
+                    current['event_peak_time'] = next_event['event_peak_time']
+            else:
+                # No merge, save current and move to next event
+                merged.append(current)
+                current = next_event.copy()
+    
+        # Append last event after loop
+        merged.append(current)
+        merged_df = pd.DataFrame(merged)
+        merged_df = merged_df.reset_index(drop=True)
 
+        return merged_df
 
 
     
@@ -328,3 +359,57 @@ class grimm_processor:
 
 
 
+
+    def compare_event_wind_similarity(self, grimm_events, kslc_path, time_col='Date_Time', 
+                                       wind_speed_col='wind_speed_set_1', 
+                                       wind_dir_col='wind_direction_set_1'):
+
+        # Load KSLC wind data, skip metadata lines
+        kslc_df = pd.read_csv(kslc_path, skiprows=10)
+        kslc_df.columns = kslc_df.columns.str.strip()
+        
+        # Parse Date_Time and convert wind columns to numeric, drop rows with missing critical data
+        kslc_df['Date_Time'] = pd.to_datetime(kslc_df['Date_Time'], errors='coerce')
+        kslc_df['Date_Time'] = kslc_df['Date_Time'].dt.tz_localize(None)
+        kslc_df['wind_speed_set_1'] = pd.to_numeric(kslc_df['wind_speed_set_1'], errors='coerce')
+        kslc_df['wind_direction_set_1'] = pd.to_numeric(kslc_df['wind_direction_set_1'], errors='coerce')
+        kslc_df = kslc_df.dropna(subset=['Date_Time', 'wind_speed_set_1', 'wind_direction_set_1'])
+        
+        results = []
+        
+        for i in range(len(grimm_events) - 1):
+            event1 = grimm_events.loc[i, "event_peak_time"]
+            event2 = grimm_events.loc[i+1, "event_peak_time"]
+            event1_start = pd.to_datetime(grimm_events.loc[i, "event_start"])
+            event1_end = event1_start + pd.to_timedelta(grimm_events.loc[i, "duration_minutes"], unit="m")
+            event2_start = pd.to_datetime(grimm_events.loc[i + 1, "event_start"])
+            event2_end = event2_start + pd.to_timedelta(grimm_events.loc[i + 1, "duration_minutes"], unit="m")
+    
+            gap = (event2_start - event1_end).total_seconds() / 3600.0
+            
+            # Only compare events separated by >0 and <=8 hours gap
+            if 0 < gap <= 8:
+                wind1 = kslc_df[(kslc_df["Date_Time"] >= event1_start) & (kslc_df["Date_Time"] <= event1_end)]
+                wind2 = kslc_df[(kslc_df["Date_Time"] >= event2_start) & (kslc_df["Date_Time"] <= event2_end)]
+    
+                # Require at least 3 samples per event
+                if len(wind1) > 2 and len(wind2) > 2:
+                    speed_ks_p = ks_2samp(wind1["wind_speed_set_1"], wind2["wind_speed_set_1"]).pvalue
+                    speed_t_p = ttest_ind(wind1["wind_speed_set_1"], wind2["wind_speed_set_1"], equal_var=False).pvalue
+                    dir_ks_p = ks_2samp(wind1["wind_direction_set_1"], wind2["wind_direction_set_1"]).pvalue
+                    dir_t_p = ttest_ind(wind1["wind_direction_set_1"], wind2["wind_direction_set_1"], equal_var=False).pvalue
+    
+                    results.append({
+                        "event1": event1,
+                        "event2": event2,
+                        "pair_index": (i, i + 1),
+                        "time_gap_hrs": gap,
+                        "event1_samples": len(wind1),
+                        "event2_samples": len(wind2),
+                        "speed_ks_p": speed_ks_p,
+                        "speed_t_p": speed_t_p,
+                        "dir_ks_p": dir_ks_p,
+                        "dir_t_p": dir_t_p
+                    })
+        
+        return pd.DataFrame(results)

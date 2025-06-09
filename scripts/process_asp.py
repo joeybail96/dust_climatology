@@ -137,12 +137,23 @@ event_thresh = clean_mean * 100
     # defining threshold by 2 orders magnitude greater than average clean dust # conc
     # https://acp.copernicus.org/articles/22/9161/2022/
 grimm_events = grimm_processor.identify_events(grimm_10min, threshold=event_thresh, clean_thresh=clean_thresh)
+grimm_events = grimm_processor.merge_adjacent_events(grimm_events)
 
 # plot dust events
 #grimm_plotter.plot_dust_thresholds(grimm_ds, 30)
 
 # plot dust event days
-grimm_plotter.plot_dust_days_from_events(grimm_10min, grimm_events, user_input, threshold = event_thresh, clean_avg=clean_thresh, wind_csv_path=kslc_file, fig_dir="../figures")
+#grimm_plotter.plot_dust_days_from_events(grimm_10min, grimm_events, user_input, threshold = event_thresh, clean_avg=clean_thresh, wind_csv_path=kslc_file, fig_dir="../figures")
+#grimm_plotter.plot_dust_days_from_events(grimm_10min, grimm_events, user_input, threshold = event_thresh, clean_avg=clean_thresh, wind_csv_path=kslc_file, fig_dir=None)
+
+
+
+
+
+similarity_df = grimm_processor.compare_event_wind_similarity(grimm_events, kslc_file)
+
+
+
 
 
 
